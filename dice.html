@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>幸運骰子 - 賭注對決</title>
+    <style>
+        :root {
+            --primary-bg: #1a1a2e;
+            --card-bg: #16213e;
+            --accent: #e94560;
+            --gold: #f1c40f;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--primary-bg);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .game-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 400px;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #30475e;
+            padding-bottom: 10px;
+        }
+
+        .balance-val { color: var(--gold); font-weight: bold; }
+
+        /* 骰子視覺效果 */
+        .dice-box {
+            display: flex;
+            justify-content: space-around;
+            margin: 30px 0;
+        }
+
+        .dice {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 10px;
+            display: grid;
+            grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+            padding: 5px;
+            box-shadow: inset 0 0 10px #ccc;
+        }
+
+        .dot { background: #333; border-radius: 50%; margin: 3px; visibility: hidden; }
+        
+        /* 骰子點數控制 */
+        [data-val="1"] .dot:nth-child(5) { visibility: visible; }
+        [data-val="2"] .dot:nth-child(1), [data-val="2"] .dot:nth-child(9) { visibility: visible; }
+        [data-val="3"] .dot:nth-child(1), [data-val="3"] .dot:nth-child(5), [data-val="3"] .dot:nth-child(9) { visibility: visible; }
+        [data-val="4"] .dot:nth-child(1), [data-val="4"] .dot:nth-child(3), [data-val="4"] .dot:nth-child(7), [data-val="4"] .dot:nth-child(9) { visibility: visible; }
+        [data-val="5"] .dot:nth-child(1), [data-val="5"] .dot:nth-child(3), [data-val="5"] .dot:nth-child(5), [data-val="5"] .dot:nth-child(7), [data-val="5"] .dot:nth-child(9) { visibility: visible; }
+        [data-val="6"] .dot:not(:nth-child(2)):not(:nth-child(5)):not(:nth-child(8)) { visibility: visible; }
+
+        /* 互動元件 */
+        input[type="number"] {
+            background: #0f3460;
+            border: none;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 80px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .roll-btn {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 5px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .roll-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .message { height: 25px; margin-top: 20px; font-weight: bold; }
+
+        /* 動畫 */
+        @keyframes shake {
+            0% { transform: translate(2px, 1px) rotate(0deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            40% { transform: translate(1px, -1px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            80% { transform: translate(2px, 1px) rotate(1deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shaking { animation: shake 0.15s infinite; }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div class="stats-bar">
+        <div>餘額: <span id="balance" class="balance-val">100</span></div>
+        <div>勝場: <span id="wins">0</span></div>
+    </div>
+
+    <div class="dice-box">
+        <div>
+            <p>你</p>
+            <div id="player-dice" class="dice" data-val="1">
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+            </div>
+        </div>
+        <div>
+            <p>電腦</p>
+            <div id="ai-dice" class="dice" data-val="1">
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin: 20px 0;">
+        下注金額: <input type="number" id="bet-amount" value="10" min="1">
+    </div>
+
+    <button class="roll-btn" onclick="playGame()">擲骰子！</button>
+
+    <div id="msg" class="message">準備好了嗎？</div>
+</div>
+
+<script>
+    let balance = 100;
+    let winCount = 0;
+
+    function updateUI() {
+        document.getElementById('balance').innerText = balance;
+        document.getElementById('wins').innerText = winCount;
+    }
+
+    function playGame() {
+        const betInput = document.getElementById('bet-amount');
+        const bet = parseInt(betInput.value);
+        const msg = document.getElementById('msg');
+        const btn = document.querySelector('.roll-btn');
+        const pDice = document.getElementById('player-dice');
+        const aDice = document.getElementById('ai-dice');
+
+        // 檢查下注
+        if (isNaN(bet) || bet <= 0) {
+            msg.innerText = "請輸入有效的下注金額！";
+            return;
+        }
+        if (bet > balance) {
+            msg.innerText = "餘額不足，你沒這麼多錢！";
+            return;
+        }
+
+        // 開始搖骰
+        btn.disabled = true;
+        msg.innerText = "搖晃中...";
+        pDice.classList.add('shaking');
+        aDice.classList.add('shaking');
+
+        setTimeout(() => {
+            pDice.classList.remove('shaking');
+            aDice.classList.remove('shaking');
+
+            const pVal = Math.floor(Math.random() * 6) + 1;
+            const aVal = Math.floor(Math.random() * 6) + 1;
+
+            pDice.setAttribute('data-val', pVal);
+            aDice.setAttribute('data-val', aVal);
+
+            if (pVal > aVal) {
+                balance += bet;
+                winCount++;
+                msg.innerHTML = `<span style="color:#2ecc71">贏了！賺到 ${bet} 元</span>`;
+            } else if (pVal < aVal) {
+                balance -= bet;
+                msg.innerHTML = `<span style="color:#e74c3c">輸了... 賠掉 ${bet} 元</span>`;
+            } else {
+                msg.innerText = "平手，賭金退回。";
+            }
+
+            updateUI();
+            btn.disabled = false;
+
+            if (balance <= 0) {
+                msg.innerHTML = "💀 你破產了！重整頁面可以復活。";
+                btn.disabled = true;
+            }
+        }, 600);
+    }
+</script>
+
+</body>
+</html>
